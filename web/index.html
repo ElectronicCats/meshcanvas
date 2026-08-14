@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeshCanvas</title>
+
+<!--
+  Leaflet 1.9.4 from unpkg. The integrity hashes below were computed from the
+  fetched files with:
+      openssl dgst -sha256 -binary leaflet.css | openssl base64 -A
+  If you vendor Leaflet locally, drop the integrity/crossorigin attributes and
+  point the src at the local copy.
+-->
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="mode-dry-run">
+
+<!-- Current mode. Always visible, colour and text both change with the mode. -->
+<div id="mode-banner" role="status" aria-live="polite">
+  <span id="mode-banner-tag">DRY RUN</span>
+  <span id="mode-banner-text">Nothing is transmitted. Frames are built and counted only.</span>
+</div>
+
+<div id="masthead">
+  <h1>MeshCanvas</h1>
+  <p id="masthead-note">
+    Synthetic Meshtastic node renderer. For use on a mesh you own and control only.
+    Injecting nodes into a mesh you do not own is not a supported use of this tool
+    and may be illegal in your jurisdiction. You are responsible for the spectrum
+    you occupy and for the licence that permits it.
+  </p>
+</div>
+
+<div id="layout">
+
+  <!-- ============================ CONTROL PANEL ============================ -->
+  <aside id="sidebar">
+
+    <section class="panel">
+      <h2>Mode</h2>
+      <div class="radio-row">
+        <label class="radio"><input type="radio" name="mode" value="dry-run" checked> dry-run</label>
+        <label class="radio"><input type="radio" name="mode" value="mqtt"> mqtt</label>
+        <label class="radio"><input type="radio" name="mode" value="rf"> rf</label>
+      </div>
+      <p class="hint" id="mode-hint">dry-run: frames are built, encrypted and counted, then discarded.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Radio</h2>
+
+      <div class="field">
+        <label for="profile">Profile</label>
+        <select id="profile">
+          <option value="private" selected>Private test (LongFast, your own key)</option>
+          <option value="meshtastic_public">Meshtastic public default (LongFast)</option>
+        </select>
+        <p class="hint">
+          Presets region, modem preset, frequency slot, channel and hop limit
+          together. Private test uses the standard LongFast radio settings a
+          stock node understands, but with a channel name and key only your node
+          holds, so nobody else decodes your synthetic nodes. The public entry
+          targets the shared default channel and carries a warning.
+        </p>
+        <p class="alert alert-error hidden" id="profile-warn"></p>
+      </div>
+
+      <div class="field">
+        <label for="region">Region</label>
+        <select id="region">
+          <option value="US" selected>US</option>
+          <option value="EU_868">EU_868</option>
+          <option value="ANZ">ANZ</option>
+          <option value="ANZ_433">ANZ_433</option>
+          <option value="EU_433">EU_433</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="preset">Modem preset</label>
+        <select id="preset">
+          <option value="LONG_FAST" selected>LONG_FAST</option>
+          <option value="LONG_SLOW">LONG_SLOW</option>
+          <option value="LONG_MODERATE">LONG_MODERATE</option>
+          <option value="LONG_TURBO">LONG_TURBO</option>
+          <option value="MEDIUM_FAST">MEDIUM_FAST</option>
+          <option value="MEDIUM_SLOW">MEDIUM_SLOW</option>
+          <option value="SHORT_FAST">SHORT_FAST</option>
+          <option value="SHORT_SLOW">SHORT_SLOW</option>
+          <option value="SHORT_TURBO">SHORT_TURBO</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="frequency">Frequency (computed by backend)</label>
+        <output class="readout" id="frequency">--</output>
+        <p class="hint">
+          Slot selection is djb2 over the channel name, not the header channel hash.
+          It is never computed in this page: the value shown is whatever the backend
+          reports for the current region, preset and channel name.
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="tx-power">TX power (dBm)
+          <span class="label-aux">region limit: <span id="power-limit">--</span></span>
+        </label>
+        <div class="inline">
+          <input type="range" id="tx-power" min="0" max="30" step="1" value="20">
+          <input type="number" id="tx-power-num" min="0" max="30" step="1" value="20" class="num-box">
+        </div>
+        <p class="hint err-text hidden" id="power-warn"></p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Channel</h2>
+
+      <div class="field">
+        <label for="channel-name">Channel name</label>
+        <input type="text" id="channel-name" value="LongFast" spellcheck="false" autocomplete="off">
+        <p class="hint">An empty name expands to the preset display name in firmware.</p>
+      </div>
+
+      <div class="field">
+        <label for="channel-num">Frequency slot (channel_num)</label>
+        <input type="number" id="channel-num" min="1" max="256" placeholder="from channel name"
+               spellcheck="false" autocomplete="off">
+        <p class="hint">
+          One-based, matching loraConfig.channel_num. Leave empty to derive the
+          slot from djb2 of the channel name, which is what a stock node does.
+          A config that pins a slot lands on a different frequency than the name
+          would choose, and nothing reports the mismatch.
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="psk">PSK (base64)</label>
+        <div class="inline">
+          <input type="password" id="psk" spellcheck="false" autocomplete="off"
+                 placeholder="base64 key, or leave empty for the backend default">
+          <button type="button" id="psk-toggle" class="btn btn-small" aria-pressed="false">show</button>
+        </div>
+        <button type="button" id="psk-generate" class="btn btn-small btn-wide">generate random PSK (16 bytes)</button>
+        <p class="hint">
+          Generated with crypto.getRandomValues. The key is never written to the log
+          pane or the browser console.
+        </p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Shape</h2>
+
+      <div class="field">
+        <label for="node-count">Node count <span class="label-aux" id="node-count-out">50</span></label>
+        <input type="range" id="node-count" min="1" max="500" step="1" value="50">
+      </div>
+
+      <div class="field">
+        <label for="scale">Scale (metres) <span class="label-aux" id="scale-out">1000</span></label>
+        <input type="range" id="scale" min="100" max="50000" step="100" value="1000">
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Draw tool</h2>
+      <div class="tool-grid">
+        <button type="button" class="btn tool-btn" data-tool="polygon">polygon</button>
+        <button type="button" class="btn tool-btn" data-tool="freehand">freehand</button>
+        <button type="button" class="btn tool-btn" data-tool="text">text</button>
+        <button type="button" class="btn tool-btn" data-tool="image">image</button>
+      </div>
+      <p class="hint" id="tool-hint">No tool active. Pick one to define a shape.</p>
+
+      <div class="field hidden" id="text-field">
+        <label for="shape-text">Text to rasterize</label>
+        <input type="text" id="shape-text" spellcheck="false" autocomplete="off" placeholder="HELLO">
+      </div>
+
+      <div class="field hidden" id="image-field">
+        <label for="shape-image">Image (PNG or SVG)</label>
+        <input type="file" id="shape-image" accept="image/png,image/svg+xml,.png,.svg">
+        <p class="hint" id="image-status">No file selected.</p>
+      </div>
+
+      <div class="inline">
+        <button type="button" id="close-polygon" class="btn btn-small">close polygon</button>
+        <button type="button" id="clear-drawing" class="btn btn-small">clear drawing</button>
+      </div>
+      <p class="hint" id="draw-status">No shape defined.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Preview</h2>
+      <button type="button" id="render" class="btn btn-primary btn-wide">render preview</button>
+      <button type="button" id="clear-preview" class="btn btn-small btn-wide">clear preview</button>
+      <p class="hint">
+        Preview points come back from POST /api/render. They are drawn as small
+        magenta circles and are synthetic, not observed nodes.
+      </p>
+      <div class="kv"><span>Points returned</span><span class="readout" id="preview-count">--</span></div>
+    </section>
+
+    <section class="panel" id="budget-panel">
+      <h2>Airtime budget</h2>
+
+      <label for="airtime-target">Airtime target</label>
+      <select id="airtime-target">
+        <option value="1">1 % - barely touches the channel</option>
+        <option value="5">5 %</option>
+        <option value="10">10 % - EU 868 legal limit</option>
+        <option value="25">25 %</option>
+        <option value="50" selected>50 % - default</option>
+        <option value="100">100 % - continuous, region limit permitting</option>
+      </select>
+      <p class="hint">
+        Share of airtime this run may occupy. The region limit is a hard ceiling
+        that this cannot raise, so picking 100 % in EU 868 still gives 10 %.
+        Lower is slower and leaves the channel usable by other nodes.
+      </p>
+
+      <div class="kv"><span>Time on air / packet</span><span class="readout" id="toa">--</span></div>
+      <div class="kv"><span>Total airtime</span><span class="readout" id="total-airtime">--</span></div>
+      <div class="kv" id="duty-row"><span>Projected duty cycle</span><span class="readout" id="duty">--</span></div>
+      <div class="kv"><span>Effective target</span><span class="readout" id="duty-target">--</span></div>
+      <div class="kv"><span>Region limit</span><span class="readout" id="duty-limit">--</span></div>
+      <div class="kv"><span>Gap between packets</span><span class="readout" id="gap">--</span></div>
+      <div class="kv"><span>ETA</span><span class="readout" id="eta">--</span></div>
+      <button type="button" id="refresh-budget" class="btn btn-small btn-wide">refresh budget</button>
+      <div class="alert alert-error hidden" id="duty-alert">
+        Projected duty cycle exceeds the region limit. Transmit is disabled.
+      </div>
+      <label class="check hidden" id="override-wrap">
+        <input type="checkbox" id="duty-override">
+        Override the duty cycle limit deliberately
+      </label>
+    </section>
+
+    <section class="panel" id="transmit-panel">
+      <h2>Transmit</h2>
+      <button type="button" id="transmit" class="btn btn-transmit btn-wide">transmit</button>
+      <p class="hint err-text hidden" id="transmit-block"></p>
+
+      <!-- Inline two-step confirmation for rf. No window.confirm, no modal. -->
+      <div id="rf-confirm" class="confirm hidden">
+        <p class="confirm-title">CONFIRM RF TRANSMISSION</p>
+        <div class="kv"><span>Frequency</span><span class="readout" id="confirm-freq">--</span></div>
+        <div class="kv"><span>TX power</span><span class="readout" id="confirm-power">--</span></div>
+        <div class="kv"><span>Total airtime</span><span class="readout" id="confirm-airtime">--</span></div>
+        <div class="kv"><span>Packets</span><span class="readout" id="confirm-packets">--</span></div>
+        <p class="confirm-note">
+          This keys a real transmitter on real spectrum. Confirm only if you own the
+          mesh and hold the licence for this band and power.
+        </p>
+        <div class="inline">
+          <button type="button" id="rf-confirm-go" class="btn btn-danger">confirm transmit</button>
+          <button type="button" id="rf-confirm-cancel" class="btn btn-small">cancel</button>
+        </div>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ============================== MAP + LOG ============================== -->
+  <main id="workspace">
+    <div id="map-wrap">
+      <div id="map"></div>
+      <div id="legend">
+        <p class="legend-title">Legend</p>
+        <p><span class="swatch swatch-preview"></span>Synthetic preview points (POST /api/render output, not real nodes)</p>
+        <p><span class="swatch swatch-draw"></span>Shape being drawn</p>
+        <p><span class="swatch swatch-center"></span>Shape centre</p>
+      </div>
+    </div>
+
+    <section id="console">
+      <header id="console-head">
+        <span class="console-title">LOG</span>
+        <span id="ws-state" class="ws-state ws-idle">socket: idle</span>
+        <span id="progress" class="progress">--</span>
+        <span class="spacer"></span>
+        <button type="button" id="reconnect" class="btn btn-small">reconnect</button>
+        <button type="button" id="clear-log" class="btn btn-small">clear</button>
+        <button type="button" id="abort" class="btn btn-abort" disabled>ABORT</button>
+      </header>
+      <div id="log" role="log" aria-live="polite"></div>
+    </section>
+  </main>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script src="app.js"></script>
+</body>
+</html>

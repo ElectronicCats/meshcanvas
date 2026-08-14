@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Virtual environment
+.venv/
+venv/
+
+# Runtime output: session node maps written per transmit run
+sessions/
+
+# macOS
+.DS_Store
+
+# Local docs (blog, design notes) kept out of the published repo
+docs/
