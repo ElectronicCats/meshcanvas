@@ -10,6 +10,22 @@ time-on-air. Nothing depends on a Meshtastic device being present. Every constan
 was read out of `meshtastic/firmware` at `origin/master` rather than recalled, and
 checked against known-good values in the tests.
 
+## Screenshots
+
+Text shape "MESH" rendered as 300 synthetic nodes over the map (preview only,
+nothing transmitted):
+
+![MESH text preview](screenshots/text-preview.jpg)
+
+A polygon drawn by hand, sampled to 150 nodes:
+
+![Polygon preview](screenshots/polygon-preview.jpg)
+
+A finished dry run: 20 nodes, 40 frames built and counted, the airtime budget
+on the left and the session CSV path in the log:
+
+![Dry run finished](screenshots/dry-run.jpg)
+
 ## Scope
 
 This transmits on real spectrum. Point it at hardware you own, on a channel you
