@@ -44,8 +44,11 @@ and so reach the ring buffer in one piece. Larger frames span several USB
 packets and could in principle be split across two transmissions.
 
 The configuration path was verified against a live board (firmware v3.1.0.0,
-git 8eaa84c): every parameter was read back with lora_config. The transmit path
-is unverified on air.
+git 8eaa84c): every parameter was read back with lora_config. The stream-mode
+transmit path has since been confirmed on air during field tests on our own
+mesh networks: frames keyed out and were captured on the matching channel. What
+remains unverified is a stock Meshtastic node decoding and mapping them, and the
+large-frame USB split described above.
 """
 
 from __future__ import annotations

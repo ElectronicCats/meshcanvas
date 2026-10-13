@@ -200,11 +200,13 @@ you use to find and remove the injected entries afterwards.
 
 ## Verifying a real node decodes a synthetic packet
 
-This has been confirmed end to end: on a private channel, a stock Meshtastic node
-received the transmitted frames, decrypted them, parsed the protobufs, and drew
-the synthetic nodes on its own map. A real receiver is the strictest check there
-is, so that result validates the whole chain at once: frame assembly, the AES-CTR
-crypto, the channel hash, the frequency slot, and the CatSniffer transmit path.
+The stream-mode transmit path has been confirmed on air in field tests on our own
+mesh networks: frames keyed out and were captured on the matching channel, which
+validates frame assembly, the AES-CTR crypto, the channel hash, the frequency
+slot, and the CatSniffer transmit path. The remaining check, a stock Meshtastic
+node receiving, decrypting, parsing and drawing the synthetic nodes on its own
+map, is the strictest one because it confirms a real receiver treats the frames
+as genuine. Run it as below.
 
 The point of the check is to confirm a receiver treats the frames as genuine, not
 merely that something was transmitted. To reproduce it:
@@ -282,7 +284,9 @@ serial port that replays the firmware's own response strings.
 
 ## Known limits
 
-- The stream-mode transmit path has not been confirmed on air.
+- The stream-mode transmit path has been confirmed on air in field tests on our
+  own mesh networks. A stock Meshtastic node decoding and mapping the synthetic
+  nodes is not yet separately confirmed.
 - Stream mode has no framing: the firmware transmits whatever its ring buffer
   holds when the LoRa thread polls. Each frame is written in one call, and frames
   at or under 64 bytes fit a single USB bulk packet, so they arrive intact.
